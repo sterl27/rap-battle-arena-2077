@@ -1,0 +1,7 @@
+{
+  "name": "Rap Battle Arena 2077",
+  "description": "A cyberpunk-themed, AI-powered rap battle platform featuring real-time 3D audio visuals and Gemini-powered lyric assistance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
