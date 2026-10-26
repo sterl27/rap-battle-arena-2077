@@ -4,7 +4,8 @@ import BattleHUD from './components/BattleHUD';
 import LyricsEditor from './components/LyricsEditor';
 import { BattleState, ChatMessage, PlayerType } from './types';
 import { audioController } from './services/audioService';
-import { generateLyrics, generateOpponentResponse, scoreRapBar } from './services/geminiService';
+import { generateLyrics, generateOpponentResponse, scoreRapBar, relayAvailable, getLastSource } from './services/battleAI';
+import { ableton } from './services/musaixLocal';
 import { Music, Zap, Radio, Play, Cpu } from 'lucide-react';
 
 export default function App() {
@@ -46,13 +47,38 @@ export default function App() {
   // --- Effects ---
   
   // Audio Init on start
+  const liveBeatRef = useRef(false); // true while Ableton (not the WebAudio synth) plays the beat
+
   const handleStart = async () => {
+    // Prefer Sterl's Ableton beat when the local relay + Live answer; else the procedural WebAudio beat.
+    const liveBeat = (await relayAvailable(true)) ? await ableton.startBeat({ preset: 'trap-trance', bpm: 92, bars: 8, new_tracks: false,
+      drums_track: Number(import.meta.env.VITE_MUSAIX_DRUMS_TRACK ?? 0), bass_track: Number(import.meta.env.VITE_MUSAIX_BASS_TRACK ?? 1),
+      parts: ['drums', 'bass'] }) : null;
+    liveBeatRef.current = !!liveBeat?.ok;
+    if (liveBeat && !liveBeat.ok) addLog(`ABLETON: ${liveBeat.message}`, "SYSTEM", "system"); // needs_confirm / Live offline
+    audioController.setBeatEnabled(!liveBeatRef.current);
     await audioController.initialize();
     setHasStarted(true);
     setBattleState(prev => ({ ...prev, status: 'BATTLE' }));
     addLog("BATTLE INITIATED. MC HUMAN VS CYBER-SHOGUN", "SYSTEM", "system");
     addLog("Round 1 - FIGHT!", "SYSTEM", "system");
+    addLog(liveBeatRef.current ? "BEAT: ABLETON LIVE (MUSAIX)" : "BEAT: ARENA SYNTH", "SYSTEM", "system");
   };
+
+  // Stop Live's transport when the battle ends or the tab closes
+  useEffect(() => {
+    if (battleState.status === 'RESULTS' && liveBeatRef.current) { void ableton.stop(); liveBeatRef.current = false; }
+  }, [battleState.status]);
+  useEffect(() => {
+    const onUnload = () => { if (liveBeatRef.current) void ableton.stop(); }; // fetch keepalive survives unload
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, []);
+
+  // Optional: each new round nudges Live's tempo up 2 BPM (relay refuses if tempo LOCK is on — harmless)
+  useEffect(() => {
+    if (liveBeatRef.current && battleState.round > 1) void ableton.nudgeTempo(2);
+  }, [battleState.round]);
 
   // Timer Logic
   useEffect(() => {
@@ -117,6 +143,7 @@ export default function App() {
              const context = lastPlayerMsg ? lastPlayerMsg.text : "You're silent, I'm violent.";
              
              const response = await generateOpponentResponse(context);
+             addLog(`[${getLastSource() === 'local' ? 'LOCAL GPU' : 'GEMINI'}]`, "SYSTEM", "system");
              
              // Type out effect or just dump it
              const lines = response.split('\n').filter(l => l.trim().length > 0);

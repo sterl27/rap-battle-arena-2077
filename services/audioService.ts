@@ -9,8 +9,15 @@ export class AudioController {
   momentum: number = 0;
   masterGain: GainNode | null = null;
 
+  beatEnabled: boolean = true;  // false when Ableton Live (via MUSAIX relay) is playing the beat
+
   setMomentum(val: number) {
     this.momentum = val;
+  }
+
+  setBeatEnabled(on: boolean) {
+    this.beatEnabled = on;
+    if (!on && this.beatInterval) { clearTimeout(this.beatInterval); this.beatInterval = null; this.isPlaying = false; }
   }
 
   async initialize() {
@@ -41,7 +48,7 @@ export class AudioController {
       const bufferLength = this.analyser.frequencyBinCount;
       this.dataArray = new Uint8Array(bufferLength);
 
-      this.startBeat();
+      if (this.beatEnabled) this.startBeat(); // mic analyser still drives the 3D visuals either way
     } catch (e) {
       console.error("Audio initialization failed", e);
     }

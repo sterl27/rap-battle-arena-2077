@@ -7,7 +7,21 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        // was '0.0.0.0'; keep the dev server loopback-only once it can drive Ableton through the proxy
+        host: env.MUSAIX_LAN === '1' ? '0.0.0.0' : '127.0.0.1',
+        proxy: {
+          // Option A (no relay change): browser -> same-origin /musaix/* -> relay. The relay only accepts
+          // Host 127.0.0.1:8765|localhost:8765 and Origin http://localhost:8765 (or none), so rewrite
+          // Host (changeOrigin) and drop Origin/Referer. Dev-only: production builds have no proxy.
+          '/musaix': {
+            target: 'http://127.0.0.1:8765',
+            changeOrigin: true,
+            rewrite: (p) => p.replace(/^\/musaix/, ''),
+            configure: (proxy) => {
+              proxy.on('proxyReq', (req) => { req.removeHeader('origin'); req.removeHeader('referer'); });
+            },
+          },
+        },
       },
       plugins: [react()],
       define: {
